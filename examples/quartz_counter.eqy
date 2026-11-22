@@ -1,11 +1,10 @@
 [options]
 
 [gold]
-read_slang counter_split.v
+read_slang counter.v
 prep -top counter
 
 [gate]
-read_slang quartz_counter_comb.sv
 read_slang quartz_counter_top.sv
 prep -top counter
 

@@ -180,7 +180,7 @@ def translate_mux(cell, rhs_tbl):
     aexpr = get_expr(rhs_tbl, A)
     bexpr = get_expr(rhs_tbl, B)
     sexpr = get_expr(rhs_tbl, S)
-    return f'if {sexpr} then {aexpr} else {bexpr}'
+    return f'if {sexpr} then {bexpr} else {aexpr}'
 
 def get_cell_expr(cell, rhs_tbl):
     if cell['type'] in BIT_BINOPS:
@@ -302,9 +302,10 @@ def translate_module(mname, module, out):
             out.write(f'  let _st <- #_st..{name} = {expr} in\n')
         else:
             idxw = len(p['bits']).bit_length()
+            out.write(f'  let {name}_upd := (#_st..{name}) in\n')
             for i, bit in enumerate(p['bits']):
                 expr = rhs_tbl[bit]
-                out.write(f'  let {name}_upd <- (#_st..{name})[{idxw} \'d {i}] = {expr} in\n')
+                out.write(f'  let {name}_upd <- (#{name}_upd)[{idxw} \'d {i}] = {expr} in\n')
             out.write(f'  let _st <- #_st..{name} = #{name}_upd in\n')
 
     out.write('return #_st)).\n\n')
