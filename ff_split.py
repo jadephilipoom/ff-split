@@ -415,8 +415,10 @@ def split_module(modname, module):
                     {"A": "input", "Y": "output"},
                     {"A_SIGNED": 0, "A_WIDTH": 1, "Y_WIDTH": 1},
                 )
-            d_base = base_names.get(d_bit, "{}_d{}".format(sanitize(cell_name), index))
             q_base = base_names.get(q_bit, "{}_q{}".format(sanitize(cell_name), index))
+            # d basenames seem to typically be less readable and it's nice if corresponding ff signals have matching names
+            # d_base = base_names.get(d_bit, "{}_d{}".format(sanitize(cell_name), index))
+            d_base = q_base
             clk_label = clock_nets[clk_net][0]
             flip_flops.append(
                 FlipFlop(
