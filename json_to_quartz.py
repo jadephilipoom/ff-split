@@ -293,22 +293,23 @@ def translate_module(mname, module, out):
         translate_cell(name, cell, lhs_tbl, rhs_tbl, out)
 
     outports = list(outputs.items()) + list(state_outputs.items())
+    out.write(f'  let _new_st := #_st in\n')
     for name, p in outports:
         if name in state_outputs:
             # use the input port name, that's what the state struct has
             name = state_mapping[name]
         if len(p['bits']) == 1:
             expr = rhs_tbl[p['bits'][0]]
-            out.write(f'  let _st <- #_st..{name} = {expr} in\n')
+            out.write(f'  let _new_st <- #_new_st..{name} = {expr} in\n')
         else:
             idxw = len(p['bits']).bit_length()
-            out.write(f'  let {name}_upd := (#_st..{name}) in\n')
+            out.write(f'  let {name}_upd := (#_new_st..{name}) in\n')
             for i, bit in enumerate(p['bits']):
                 expr = rhs_tbl[bit]
                 out.write(f'  let {name}_upd <- (#{name}_upd)[{idxw} \'d {i}] = {expr} in\n')
-            out.write(f'  let _st <- #_st..{name} = #{name}_upd in\n')
+            out.write(f'  let _new_st <- #_new_st..{name} = #{name}_upd in\n')
 
-    out.write('return #_st)).\n\n')
+    out.write('return #_new_st)).\n\n')
     out.write(f'Definition {mname}')
     out.write(' {var fn}')
     out.write(f' := fns.package_global_fns\'\' var fn (@{mname}_inner).\n')
