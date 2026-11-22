@@ -1,0 +1,14 @@
+[options]
+
+[gold]
+read_slang const_d.v
+prep -top const_d
+
+[gate]
+read_slang const_d_comb.v
+read_slang const_d_sync.v
+read_slang const_d_top.v
+prep -top const_d
+
+[strategy simple]
+use sby

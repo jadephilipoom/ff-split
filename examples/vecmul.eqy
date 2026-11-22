@@ -1,0 +1,14 @@
+[options]
+
+[gold]
+read_slang vecmul.v
+prep -top vecmul
+
+[gate]
+read_slang vecmul_comb.v
+read_slang vecmul_sync.v
+read_slang vecmul_top.v
+prep -top vecmul
+
+[strategy simple]
+use sby

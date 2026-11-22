@@ -1,0 +1,14 @@
+[options]
+
+[gold]
+read_slang twoclk.v
+prep -top twoclk
+
+[gate]
+read_slang twoclk_comb.v
+read_slang twoclk_sync.v
+read_slang twoclk_top.v
+prep -top twoclk
+
+[strategy simple]
+use sby

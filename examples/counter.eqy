@@ -1,0 +1,14 @@
+[options]
+
+[gold]
+read_slang counter.v
+prep -top counter
+
+[gate]
+read_slang counter_comb.v
+read_slang counter_sync.v
+read_slang counter_top.v
+prep -top counter
+
+[strategy simple]
+use sby
