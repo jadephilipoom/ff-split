@@ -515,7 +515,7 @@ def split_module(modname, module):
     # ---- top level ----------------------------------------------------------
     comb_name = modname + "_comb"
     sync_name = modname + "_sync"
-    top_name = modname + "_split"
+    top_name = modname
     top = {
         "attributes": {},
         "ports": OrderedDict(),
@@ -823,10 +823,12 @@ def main():
 
     comb_json = outdir / "{}_comb.json".format(stem)
     sync_json = outdir / "{}_sync.json".format(stem)
-    top_json = outdir / "{}_split.json".format(stem)
+    top_json = outdir / "{}_top.json".format(stem)
+    split_json = outdir / "{}_split.json".format(stem)
     dump_module_design(comb_json, [(comb_name, comb)])
     dump_module_design(sync_json, [(sync_name, sync)])
-    dump_module_design(top_json, [(comb_name, comb), (sync_name, sync), (top_name, top)])
+    dump_module_design(top_json, [(top_name, top)])
+    dump_module_design(split_json, [(comb_name, comb), (sync_name, sync), (top_name, top)])
 
     print("module {} -> {}".format(modname, top_name))
     print("  combinational: {} ({} cells, {} ports) -> {}".format(
@@ -835,13 +837,15 @@ def main():
         sync_name, stats["sync_cells"], len(sync["ports"]), sync_json))
     print("  top          : {} ({} ports) -> {}".format(
         top_name, len(top["ports"]), top_json))
+    print("  split        : {} ({} ports) -> {}".format(
+        top_name, len(top["ports"]), split_json))
     print("  clocks: {}".format(
         ", ".join("{}(net {})".format(name, net_id)
                   for net_id, name in stats["clocks"].items())))
     print("  {} sync bits -> i_*/o_* ports".format(stats["flip_flops"]))
 
     if args.verify:
-        for json_path in (comb_json, sync_json, top_json):
+        for json_path in (comb_json, sync_json, top_json, split_json):
             v_path = json_path.with_suffix(".v")
             yosys_verify(json_path, v_path)
             print("  yosys round-trip OK: {} -> {}".format(json_path, v_path))

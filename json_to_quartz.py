@@ -107,18 +107,18 @@ def get_rhs_exprs(inputs, state_inputs):
     rhs_tbl = {}
     for name, port in inputs.items():
         if len(port['bits']) == 1:
-            rhs_tbl[port['bits'][0]] = f'#d..{name}'
+            rhs_tbl[port['bits'][0]] = f'#_d..{name}'
         else:
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
-                rhs_tbl[bit] = f'(#d..{name})[{idxw} \'d {i}]'
+                rhs_tbl[bit] = f'(#_d..{name})[{idxw} \'d {i}]'
     for name, port in state_inputs.items():
         if len(port['bits']) == 1:
-            rhs_tbl[port['bits'][0]] = f'#st..{name}'
+            rhs_tbl[port['bits'][0]] = f'#_st..{name}'
         else:
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
-                tbl[bit] = f'(#st..{name})[{idxlen} \'d {i}]'
+                tbl[bit] = f'(#_st..{name})[{idxlen} \'d {i}]'
     return rhs_tbl
 
 def get_cell_output_bits(cell):
@@ -285,7 +285,7 @@ def translate_module(mname, module, out):
     out.write('\n')
     out.write(f'Definition {mname}_inner')
     out.write(' {var} : fn.fn var (Pair State Req) State := fn.Fn (fun (p: var (Pair State Req)) => quartz_eexpr:(\n')
-    out.write('  let st := #p .1 in let d := #p .2 in\n')
+    out.write('  let _st := #p .1 in let _d := #p .2 in\n')
 
     # translate the cells into bitwise operations
     for name in sorted_cells:
@@ -299,15 +299,15 @@ def translate_module(mname, module, out):
             name = state_mapping[name]
         if len(p['bits']) == 1:
             expr = rhs_tbl[p['bits'][0]]
-            out.write(f'  let st <- #st..{name} = {expr} in\n')
+            out.write(f'  let _st <- #_st..{name} = {expr} in\n')
         else:
             idxw = len(p['bits']).bit_length()
             for i, bit in enumerate(p['bits']):
                 expr = rhs_tbl[bit]
-                out.write(f'  let {name}_upd <- (#st..{name})[{idxw} \'d {i}] = {expr} in\n')
-            out.write(f'  let st <- #st..{name} = #{name}_upd in\n')
+                out.write(f'  let {name}_upd <- (#_st..{name})[{idxw} \'d {i}] = {expr} in\n')
+            out.write(f'  let _st <- #_st..{name} = #{name}_upd in\n')
 
-    out.write('return #st)).\n\n')
+    out.write('return #_st)).\n\n')
     out.write(f'Definition {mname}')
     out.write(' {var fn}')
     out.write(f' := fns.package_global_fns\'\' var fn (@{mname}_inner).\n')
