@@ -1,0 +1,12 @@
+[options]
+
+[gold]
+read_slang shift.v
+prep -top shift
+
+[gate]
+read_slang quartz_shift_top.sv
+prep -top shift
+
+[strategy simple]
+use sby
