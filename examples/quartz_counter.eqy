@@ -1,0 +1,13 @@
+[options]
+
+[gold]
+read_slang counter_split.v
+prep -top counter
+
+[gate]
+read_slang quartz_counter_comb.sv
+read_slang quartz_counter_top.sv
+prep -top counter
+
+[strategy simple]
+use sby
