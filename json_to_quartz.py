@@ -50,10 +50,6 @@ def translate_ports(ports):
     state_inputs = {}
     state_outputs = {}
     for p in ports:
-        if p == 'clk':
-            # ignore the clock signal, it should not be used
-            debug('WARNING: Ignoring `clk` port for module that should be combinational.')
-            continue
         if ports[p]['direction'] == 'input':
             if p.startswith(STATE_IN_PREFIX):
                 state_inputs[p] = ports[p]
@@ -114,11 +110,11 @@ def get_rhs_exprs(inputs, state_inputs):
                 rhs_tbl[bit] = f'(#_d..{name})[{idxw} \'d {i}]'
     for name, port in state_inputs.items():
         if len(port['bits']) == 1:
-            rhs_tbl[port['bits'][0]] = f'#_st..{name}'
+            rhs_tbl[port['bits'][0]] = f'#_st_{name}'
         else:
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
-                tbl[bit] = f'(#_st..{name})[{idxlen} \'d {i}]'
+                tbl[bit] = f'(#_st_{name})[{idxlen} \'d {i}]'
     return rhs_tbl
 
 def get_cell_output_bits(cell):
@@ -210,6 +206,10 @@ def translate_cell(name, cell, lhs_tbl, rhs_tbl, out):
     rhs_tbl[Y] = f'#{name}'
     out.write(f'  let {name} := {expr} in\n')
 
+def sanitize(name):
+    '''Make a netname legal for a quartz variable name.'''
+    return name.replace('.', '_')
+
 def get_lhs_names(module):
     '''Make a table for names of bit signals that receive assignments.'''
     lhs_tbl = {}
@@ -219,7 +219,7 @@ def get_lhs_names(module):
             continue
         if len(net['bits']) == 1:
             bit = net['bits'][0]
-            lhs_tbl[bit] = netname
+            lhs_tbl[bit] = sanitize(netname)
         else:
             # name signals with indices because assigning to a specific index
             # of an array in quartz is a giant pain
@@ -227,7 +227,7 @@ def get_lhs_names(module):
                 name = f'{netname}_{i}'
                 while (name in module['netnames']) or (name in lhs_tbl):
                     name += '_'
-                lhs_tbl[bit] = name
+                lhs_tbl[bit] = sanitize(name)
     return lhs_tbl
 
 def get_output_ports(bit, outputs, state_outputs):
@@ -272,7 +272,6 @@ def topo_sort_cells(cells, rhs_tbl):
 
     return topo_sort(dag)
 
-
 def translate_module(mname, module, out):
     inputs, outputs, state_inputs, state_outputs, state_mapping = translate_ports(module['ports'])
     lhs_tbl = get_lhs_names(module)
@@ -286,6 +285,12 @@ def translate_module(mname, module, out):
     out.write(f'Definition {mname}_inner')
     out.write(' {var} : fn.fn var (Pair State Req) State := fn.Fn (fun (p: var (Pair State Req)) => quartz_eexpr:(\n')
     out.write('  let _st := #p .1 in let _d := #p .2 in\n')
+
+    # the .. notation calls ltac2 to reify the expression internally; assigning
+    # variables early instead of using expr.Get every time helps the Rocq
+    # expression parse in a more reasonable amount of time
+    for name in state_inputs:
+        out.write(f'  let _st_{name} := #_st..{name} in\n')
 
     # translate the cells into bitwise operations
     for name in sorted_cells:
@@ -320,6 +325,7 @@ if __name__ == '__main__':
     parser.add_argument('-o', '--out', required=False, default='-', type=argparse.FileType('w'), help='Destination Rocq file.')
     args = parser.parse_args()
 
+    print(f'json_to_quartz: {args.json.name} -> {args.out.name}')
     args.out.write(PREFIX)
     modules = json.loads(args.json.read())['modules']
     for m in modules:
