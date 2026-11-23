@@ -21,20 +21,25 @@ function automatic state__1B_1B_1B_1B_4S twoclk_comb_inner_specialization_1 (
   input Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_1B_3S)::t p);
   begin state__1B_1B_1B_1B_4S _st_0 = Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_1B_3S)::fst(p);
   begin req__1B_1B_1B_3S _d_1 = Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_1B_3S)::snd(p);
-  begin state__1B_1B_1B_1B_4S _new_st_2 = _st_0;
-  begin state__1B_1B_1B_1B_4S _new_st_3;
-  _new_st_3 = _new_st_2;
-  _new_st_3.qa = _st_0.o_clk2_qa;
-  begin state__1B_1B_1B_1B_4S _new_st_4;
-  _new_st_4 = _new_st_3;
-  _new_st_4.qb = _st_0.o_clk1_qb;
-  begin state__1B_1B_1B_1B_4S _new_st_5;
-  _new_st_5 = _new_st_4;
-  _new_st_5.o_clk1_qb = _d_1.d;
-  begin state__1B_1B_1B_1B_4S _new_st_6;
-  _new_st_6 = _new_st_5;
-  _new_st_6.o_clk2_qa = _d_1.d;
-  twoclk_comb_inner_specialization_1 = _new_st_6; end end end end end end end
+  begin bit[0:0] _st_o_clk1_qb_2 = _st_0.o_clk1_qb;
+  begin bit[0:0] _st_o_clk2_qa_3 = _st_0.o_clk2_qa;
+  begin bit[0:0] _d_clk_a_4 = _d_1.clk_a;
+  begin bit[0:0] _d_clk_b_5 = _d_1.clk_b;
+  begin bit[0:0] _d_d_6 = _d_1.d;
+  begin state__1B_1B_1B_1B_4S _new_st_7 = _st_0;
+  begin state__1B_1B_1B_1B_4S _new_st_8;
+  _new_st_8 = _new_st_7;
+  _new_st_8.qa = _st_o_clk2_qa_3;
+  begin state__1B_1B_1B_1B_4S _new_st_9;
+  _new_st_9 = _new_st_8;
+  _new_st_9.qb = _st_o_clk1_qb_2;
+  begin state__1B_1B_1B_1B_4S _new_st_10;
+  _new_st_10 = _new_st_9;
+  _new_st_10.o_clk1_qb = _d_d_6;
+  begin state__1B_1B_1B_1B_4S _new_st_11;
+  _new_st_11 = _new_st_10;
+  _new_st_11.o_clk2_qa = _d_d_6;
+  twoclk_comb_inner_specialization_1 = _new_st_11; end end end end end end end end end end end end
 endfunction
 
 function automatic state__1B_1B_1B_1B_4S twoclk_comb_inner (

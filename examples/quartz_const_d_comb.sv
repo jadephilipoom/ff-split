@@ -15,31 +15,35 @@ class Either #(parameter type A, parameter type B);
 endclass
 
 typedef struct packed { bit[0:0] o_clk1_q1; bit[0:0] o_clk1_q0; bit[0:0] q0; bit[0:0] q1; } state__1B_1B_1B_1B_4S;
-typedef struct packed { bit[0:0] d; } req__1B_1S;
+typedef struct packed { bit[0:0] clk; bit[0:0] d; } req__1B_1B_2S;
 
 function automatic state__1B_1B_1B_1B_4S const_d_comb_inner_specialization_1 (
-  input Pair#(state__1B_1B_1B_1B_4S, req__1B_1S)::t p);
-  begin state__1B_1B_1B_1B_4S _st_0 = Pair#(state__1B_1B_1B_1B_4S, req__1B_1S)::fst(p);
-  begin req__1B_1S _d_1 = Pair#(state__1B_1B_1B_1B_4S, req__1B_1S)::snd(p);
-  begin bit[0:0] i_clk1_q1_2 = 1'd1;
-  begin state__1B_1B_1B_1B_4S _new_st_3 = _st_0;
-  begin state__1B_1B_1B_1B_4S _new_st_4;
-  _new_st_4 = _new_st_3;
-  _new_st_4.q0 = _st_0.o_clk1_q0;
-  begin state__1B_1B_1B_1B_4S _new_st_5;
-  _new_st_5 = _new_st_4;
-  _new_st_5.q1 = _st_0.o_clk1_q1;
-  begin state__1B_1B_1B_1B_4S _new_st_6;
-  _new_st_6 = _new_st_5;
-  _new_st_6.o_clk1_q1 = i_clk1_q1_2;
-  begin state__1B_1B_1B_1B_4S _new_st_7;
-  _new_st_7 = _new_st_6;
-  _new_st_7.o_clk1_q0 = _d_1.d;
-  const_d_comb_inner_specialization_1 = _new_st_7; end end end end end end end end
+  input Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_2S)::t p);
+  begin state__1B_1B_1B_1B_4S _st_0 = Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_2S)::fst(p);
+  begin req__1B_1B_2S _d_1 = Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_2S)::snd(p);
+  begin bit[0:0] _st_o_clk1_q1_2 = _st_0.o_clk1_q1;
+  begin bit[0:0] _st_o_clk1_q0_3 = _st_0.o_clk1_q0;
+  begin bit[0:0] _d_clk_4 = _d_1.clk;
+  begin bit[0:0] _d_d_5 = _d_1.d;
+  begin bit[0:0] i_clk1_q1_6 = 1'd1;
+  begin state__1B_1B_1B_1B_4S _new_st_7 = _st_0;
+  begin state__1B_1B_1B_1B_4S _new_st_8;
+  _new_st_8 = _new_st_7;
+  _new_st_8.q0 = _st_o_clk1_q0_3;
+  begin state__1B_1B_1B_1B_4S _new_st_9;
+  _new_st_9 = _new_st_8;
+  _new_st_9.q1 = _st_o_clk1_q1_2;
+  begin state__1B_1B_1B_1B_4S _new_st_10;
+  _new_st_10 = _new_st_9;
+  _new_st_10.o_clk1_q1 = i_clk1_q1_6;
+  begin state__1B_1B_1B_1B_4S _new_st_11;
+  _new_st_11 = _new_st_10;
+  _new_st_11.o_clk1_q0 = _d_d_5;
+  const_d_comb_inner_specialization_1 = _new_st_11; end end end end end end end end end end end end
 endfunction
 
 function automatic state__1B_1B_1B_1B_4S const_d_comb_inner (
-  input Pair#(state__1B_1B_1B_1B_4S, req__1B_1S)::t x);
+  input Pair#(state__1B_1B_1B_1B_4S, req__1B_1B_2S)::t x);
   const_d_comb_inner = const_d_comb_inner_specialization_1(x);
 endfunction
 

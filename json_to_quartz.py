@@ -9,15 +9,15 @@ DEBUG = False
 STATE_IN_PREFIX = 'o_clk'
 STATE_OUT_PREFIX = 'i_clk'
 
-# translations for basic bitwise operators
+# translations for basic bitwise operators (with and without notations)
 BIT_BINOPS = {
-    '$and': '&',
-    '$xor': '^',
-    '$or': '|',
+    '$and': ('&', 'And'),
+    '$xor': ('^', 'Xor'),
+    '$or': ('|', 'Or'),
 }
 BIT_UNOPS = {
-    '$not': '~',
-    '$pos': '', # pos is just an assignment afaict
+    '$not': ('~', 'Not'),
+    '$pos': ('', ''), # this one seems to be just an assignment
 }
 
 PREFIX='''(* Automatically generated from Yosys JSON. *)
@@ -98,16 +98,16 @@ def stringify_ports(inputs, outputs, state_inputs, state_outputs):
 
     return '\n'.join(lines)
 
-def get_rhs_exprs(inputs, state_inputs):
+def get_rhs_exprs(inputs, state_inputs, use_notations):
     # build lookup tables for the port expressions
     rhs_tbl = {}
     for name, port in inputs.items():
         if len(port['bits']) == 1:
-            rhs_tbl[port['bits'][0]] = f'#_d..{name}'
+            rhs_tbl[port['bits'][0]] = f'#_d_{name}'
         else:
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
-                rhs_tbl[bit] = f'(#_d..{name})[{idxw} \'d {i}]'
+                rhs_tbl[bit] = f'(#_d_{name})[{idxw} \'d {i}]'
     for name, port in state_inputs.items():
         if len(port['bits']) == 1:
             rhs_tbl[port['bits'][0]] = f'#_st_{name}'
@@ -115,6 +115,8 @@ def get_rhs_exprs(inputs, state_inputs):
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
                 tbl[bit] = f'(#_st_{name})[{idxlen} \'d {i}]'
+    if not use_notations:
+        rhs_tbl = {n:f'quartz_expr:({e})' for n, e in rhs_tbl.items()}
     return rhs_tbl
 
 def get_cell_output_bits(cell):
@@ -136,7 +138,7 @@ def get_expr(rhs_tbl, bit):
         raise ValueError(f'Failed to resolve expression for signal {bit}')
     return rhs_tbl[bit]
 
-def translate_bit_binop(cell, rhs_tbl):
+def translate_bit_binop(cell, rhs_tbl, use_notations):
     assert int(cell['parameters']['A_SIGNED']) == 0
     assert int(cell['parameters']['B_SIGNED']) == 0
     assert int(cell['parameters']['A_WIDTH']) == 1
@@ -149,10 +151,12 @@ def translate_bit_binop(cell, rhs_tbl):
     B = cell['connections']['B'][0]
     aexpr = get_expr(rhs_tbl, A)
     bexpr = get_expr(rhs_tbl, B)
-    infix = BIT_BINOPS[cell['type']]
-    return f'{aexpr} {infix} {bexpr}'
+    operator, opname = BIT_BINOPS[cell['type']]
+    if use_notations:
+        return f'{aexpr} {operator} {bexpr}'
+    return f'(expr.Binop binop.{opname} {aexpr} {bexpr})'
 
-def translate_bit_unop(cell, rhs_tbl):
+def translate_bit_unop(cell, rhs_tbl, use_notations):
     assert int(cell['parameters']['A_SIGNED']) == 0
     assert int(cell['parameters']['A_WIDTH']) == 1
     assert int(cell['parameters']['Y_WIDTH']) == 1
@@ -160,10 +164,15 @@ def translate_bit_unop(cell, rhs_tbl):
     assert len(cell['connections']['Y']) == 1
     A = cell['connections']['A'][0]
     aexpr = get_expr(rhs_tbl, A)
-    operator = BIT_UNOPS[cell['type']]
-    return f'{operator} {aexpr}'
+    operator, opname = BIT_UNOPS[cell['type']]
+    if operator == '':
+        return f'{aexpr}'
+    if use_notations:
+        return f'{operator} {aexpr}'
+    return f'(expr.Unop unop.{opname} {aexpr})'
 
-def translate_mux(cell, rhs_tbl):
+
+def translate_mux(cell, rhs_tbl, use_notations):
     assert int(cell['parameters']['WIDTH']) == 1
     assert len(cell['connections']['A']) == 1
     assert len(cell['connections']['B']) == 1
@@ -176,21 +185,29 @@ def translate_mux(cell, rhs_tbl):
     aexpr = get_expr(rhs_tbl, A)
     bexpr = get_expr(rhs_tbl, B)
     sexpr = get_expr(rhs_tbl, S)
-    return f'if {sexpr} then {bexpr} else {aexpr}'
+    if use_notations:
+        return f'if {sexpr} then {bexpr} else {aexpr}'
+    return f'(expr.If {sexpr} {bexpr} {aexpr})'
 
-def get_cell_expr(cell, rhs_tbl):
+def get_cell_expr(cell, rhs_tbl, use_notations):
     if cell['type'] in BIT_BINOPS:
-        expr = translate_bit_binop(cell, rhs_tbl)
+        expr = translate_bit_binop(cell, rhs_tbl, use_notations)
     elif cell['type'] in BIT_UNOPS:
-        expr = translate_bit_unop(cell, rhs_tbl)
+        expr = translate_bit_unop(cell, rhs_tbl, use_notations)
     elif cell['type'] == "$mux":
-        expr = translate_mux(cell, rhs_tbl)
+        expr = translate_mux(cell, rhs_tbl, use_notations)
     else:
         raise ValueError(f'Unknown cell type: {cell["type"]}')
     return expr
 
-def translate_cell(name, cell, lhs_tbl, rhs_tbl, out):
-    expr = get_cell_expr(cell, rhs_tbl)
+def translate_let(name, expr, use_notations):
+    if use_notations:
+        return f'  let {name} := {expr} in\n'
+    return f'  eexpr.Let "{name}" {expr} (fun {name} =>\n'
+
+
+def translate_cell(name, cell, lhs_tbl, rhs_tbl, out, use_notations):
+    expr = get_cell_expr(cell, rhs_tbl, use_notations)
     outbits = get_cell_output_bits(cell)
     if len(outbits) != 1:
         # TODO: handle calls to other modules?
@@ -203,8 +220,8 @@ def translate_cell(name, cell, lhs_tbl, rhs_tbl, out):
         return
 
     name = lhs_tbl[Y]
-    rhs_tbl[Y] = f'#{name}'
-    out.write(f'  let {name} := {expr} in\n')
+    rhs_tbl[Y] = f'#{name}' if use_notations else f'(expr.Var {name})'
+    out.write(translate_let(name, expr, use_notations))
 
 def sanitize(name):
     '''Make a netname legal for a quartz variable name.'''
@@ -272,49 +289,98 @@ def topo_sort_cells(cells, rhs_tbl):
 
     return topo_sort(dag)
 
-def translate_module(mname, module, out):
+def translate_module(mname, module, out, use_notations):
     inputs, outputs, state_inputs, state_outputs, state_mapping = translate_ports(module['ports'])
     lhs_tbl = get_lhs_names(module)
-    rhs_tbl = get_rhs_exprs(inputs, state_inputs)
-    rhs_tbl["0"] = "(1 'd 0)"
-    rhs_tbl["1"] = "(1 'd 1)"
+    rhs_tbl = get_rhs_exprs(inputs, state_inputs, use_notations)
+    rhs_tbl["0"] = "(1 'd 0)" if use_notations else '(expr.Const (t:=Bits 1) (bits.of_Z _ 0))'
+    rhs_tbl["1"] = "(1 'd 1)" if use_notations else '(expr.Const (t:=Bits 1) (bits.of_Z _ 1))'
     sorted_cells = topo_sort_cells(module["cells"], rhs_tbl)
 
     out.write(stringify_ports(inputs, outputs, state_inputs, state_outputs))
     out.write('\n')
     out.write(f'Definition {mname}_inner')
-    out.write(' {var} : fn.fn var (Pair State Req) State := fn.Fn (fun (p: var (Pair State Req)) => quartz_eexpr:(\n')
-    out.write('  let _st := #p .1 in let _d := #p .2 in\n')
+    out.write(' {var} : fn.fn var (Pair State Req) State := fn.Fn (fun (p: var (Pair State Req)) =>')
+    close_parens = 1
+    if use_notations:
+        out.write('quartz_eexpr:(')
+        close_parens += 1
+    out.write('\n  ')
+
+    if use_notations:
+        out.write('  let _st := #p .1 in let _d := #p .2 in\n')
+    else:
+        st_expr = '(expr.Get (typeWithHole.PairL typeWithHole.HOLE _) (expr.Var p) expr.tt)'
+        out.write(translate_let('_st', st_expr, use_notations))
+        close_parens += 1
+        d_expr = '(expr.Get (typeWithHole.PairR typeWithHole.HOLE _) (expr.Var p) expr.tt)'
+        out.write(translate_let('_d', d_expr, use_notations))
+        close_parens += 1
 
     # the .. notation calls ltac2 to reify the expression internally; assigning
     # variables early instead of using expr.Get every time helps the Rocq
     # expression parse in a more reasonable amount of time
     for name in state_inputs:
-        out.write(f'  let _st_{name} := #_st..{name} in\n')
+        expr = f'#_st..{name}' if use_notations else f'quartz_expr:(#_st..name)'
+        out.write(translate_let(f'_st_{name}', expr, use_notations))
+        if use_notations:
+            close_parens += 1
+    for name in inputs:
+        expr = f'#_d..{name}' if use_notations else f'quartz_expr:(#_d..name)'
+        out.write(translate_let(f'_d_{name}', expr, use_notations))
+        if use_notations:
+            close_parens += 1
 
     # translate the cells into bitwise operations
     for name in sorted_cells:
         cell = module['cells'][name]
-        translate_cell(name, cell, lhs_tbl, rhs_tbl, out)
+        translate_cell(name, cell, lhs_tbl, rhs_tbl, out, use_notations)
+        if use_notations:
+            close_parens += 1
 
     outports = list(outputs.items()) + list(state_outputs.items())
-    out.write(f'  let _new_st := #_st in\n')
+    out.write(translate_let(f'_new_st', '#_st' if use_notations else '(expr.Var _st)', use_notations))
+    if use_notations:
+        close_parens += 1
+
     for name, p in outports:
         if name in state_outputs:
             # use the input port name, that's what the state struct has
             name = state_mapping[name]
         if len(p['bits']) == 1:
             expr = rhs_tbl[p['bits'][0]]
-            out.write(f'  let _new_st <- #_new_st..{name} = {expr} in\n')
+            if use_notations:
+                out.write(f'  let _new_st <- #_new_st..{name} = {expr} in\n')
+            else:
+                out.write(f'  eexpr.Bind "_new_st" quartz_eexpr:(#_new_st..{name} = {expr}) (fun _new_st => in\n')
+                close_parens += 1
         else:
             idxw = len(p['bits']).bit_length()
-            out.write(f'  let {name}_upd := (#_new_st..{name}) in\n')
+            expr = f'#_new_st..{name}'
+            if not use_notations:
+                expr = f'quartz_expr:({expr})'
+            out.write(translate_let(f'{name}_upd', expr, use_notations))
+            if use_notations:
+                close_parens += 1
             for i, bit in enumerate(p['bits']):
                 expr = rhs_tbl[bit]
-                out.write(f'  let {name}_upd <- (#{name}_upd)[{idxw} \'d {i}] = {expr} in\n')
-            out.write(f'  let _new_st <- #_new_st..{name} = #{name}_upd in\n')
+                if use_notations:
+                    out.write(f'  let {name}_upd <- (#{name}_upd)[{idxw} \'d {i}] = {expr} in\n')
+                else:
+                    out.write(f'  eexpr.Bind "{name}_upd" quartz_eexpr:((#{name}_upd)[{idxw} \'d {i}] = {expr}) (fun {name}_upd =>\n')
+                    close_parens += 1
+            if use_notations:
+                out.write(f'  let _new_st <- #_new_st..{name} = #{name}_upd in\n')
+            else:
+                out.write(f'  eexpr.Bind "_new_st" quartz_eexpr:(_new_st..{name} = {name}_upd) (fun _new_st =>\n')
+                close_parens += 1
 
-    out.write('return #_new_st)).\n\n')
+    if use_notations:
+        out.write('return #_new_st))')
+    else:
+        out.write('eexpr.Ret (expr.Var _new_st)')
+        out.write(')' * close_parens)
+    out.write('.\n\n')
     out.write(f'Definition {mname}')
     out.write(' {var fn}')
     out.write(f' := fns.package_global_fns\'\' var fn (@{mname}_inner).\n')
@@ -329,4 +395,4 @@ if __name__ == '__main__':
     args.out.write(PREFIX)
     modules = json.loads(args.json.read())['modules']
     for m in modules:
-        translate_module(m, modules[m], args.out)
+        translate_module(m, modules[m], args.out, True)

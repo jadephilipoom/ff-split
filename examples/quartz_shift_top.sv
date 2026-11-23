@@ -3,7 +3,7 @@
 `include "quartz_shift_comb.sv"
 
 typedef state__1B_1B_1B_1B_3A_4S state;
-typedef req__1B_1S req;
+typedef req__1B_1B_2S req;
 
 module shift(clk, d, q);
     input clk;
@@ -14,6 +14,7 @@ module shift(clk, d, q);
     state next;
     req r;
 
+    assign r.clk = clk;
     assign r.d = d;
     assign next = shift_comb_inner(Pair#(state, req)::mk (s, r));
     assign q = next.q;
