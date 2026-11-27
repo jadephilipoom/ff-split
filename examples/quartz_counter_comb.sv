@@ -31,9 +31,9 @@ function automatic state__1B_1B_1B_1B_3A_4S counter_comb_inner_specialization_1 
   begin bit[0:0] n_0_9 = (_st_o_clk1_q_0_4 ^ g_8);
   begin bit[0:0] i_clk1_q_0_10 = (_d_resetn_6 ? n_0_9 : 1'd0);
   begin bit[0:0] n_1_11 = (_st_o_clk1_q_1_3 ^ (_st_o_clk1_q_0_4 & g_8));
-  begin bit[0:0] i_clk1_q_1_12 = (_d_resetn_6 ? n_1_11 : 1'd0);
-  begin bit[0:0] n_2_13 = (_st_o_clk1_q_2_2 ^ ((_st_o_clk1_q_1_3 & _st_o_clk1_q_0_4) & g_8));
-  begin bit[0:0] i_clk1_q_2_14 = (_d_resetn_6 ? n_2_13 : 1'd0);
+  begin bit[0:0] n_2_12 = (_st_o_clk1_q_2_2 ^ ((_st_o_clk1_q_1_3 & _st_o_clk1_q_0_4) & g_8));
+  begin bit[0:0] i_clk1_q_2_13 = (_d_resetn_6 ? n_2_12 : 1'd0);
+  begin bit[0:0] i_clk1_q_1_14 = (_d_resetn_6 ? n_1_11 : 1'd0);
   begin state__1B_1B_1B_1B_3A_4S _new_st_15 = _st_0;
   begin bit[3-1:0][0:0] count_upd_16 = _new_st_15.count;
   begin bit[3-1:0][0:0] count_upd_17;
@@ -50,10 +50,10 @@ function automatic state__1B_1B_1B_1B_3A_4S counter_comb_inner_specialization_1 
   _new_st_20.count = count_upd_19;
   begin state__1B_1B_1B_1B_3A_4S _new_st_21;
   _new_st_21 = _new_st_20;
-  _new_st_21.o_clk1_q_2 = i_clk1_q_2_14;
+  _new_st_21.o_clk1_q_2 = i_clk1_q_2_13;
   begin state__1B_1B_1B_1B_3A_4S _new_st_22;
   _new_st_22 = _new_st_21;
-  _new_st_22.o_clk1_q_1 = i_clk1_q_1_12;
+  _new_st_22.o_clk1_q_1 = i_clk1_q_1_14;
   begin state__1B_1B_1B_1B_3A_4S _new_st_23;
   _new_st_23 = _new_st_22;
   _new_st_23.o_clk1_q_0 = i_clk1_q_0_10;

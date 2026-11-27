@@ -32,17 +32,6 @@ def debug(msg):
     if DEBUG:
         print(msg)
 
-def translate_interface(ports):
-    '''Translates port data to struct fields.'''
-    lines = []
-    for name, port in ports.items():
-        if len(port['bits']) == 1:
-            lines.append(f'  {name} : Bool;')
-        else:
-            bitlen = len(port['bits'])
-            lines.append(f'  {name} : Array Bool {bitlen};')
-    return lines
-
 def translate_ports(ports):
     # classify the ports as true inputs, true outputs and state values
     inputs = {}
@@ -77,46 +66,86 @@ def translate_ports(ports):
             raise ValueError(f'Ports {inname} and {outname} have incompatible bitlengths.')
 
     return inputs, outputs, state_inputs, state_outputs, state_mapping
+
+def translate_interface(ports):
+    '''Translates port data to struct fields.'''
+    lines = []
+    for name, port in ports.items():
+        if len(port['bits']) == 1:
+            lines.append(f'  {name} : Bool;')
+        else:
+            bitlen = len(port['bits'])
+            lines.append(f'  {name} : Array Bool {bitlen};')
+    return lines
+
+def struct_field_type(port):
+    if len(port['bits']) == 1:
+        return 'Bits 1'
+    else:
+        bitlen = len(port['bits'])
+        return f'Array Bool {bitlen}'
+
+def ports_to_structs(inputs, outputs, state_inputs, state_outputs):
+    '''Structs are represented as lists of (name, type) tuples.'''
+    req = [(name, struct_field_type(port)) for name, port in inputs.items()]
+    state_fields = list(state_inputs.items()) + list(outputs.items())
+    state = [(name, struct_field_type(port)) for name, port in state_fields]
+    return req, state
     
-def stringify_ports(inputs, outputs, state_inputs, state_outputs):
+def stringify_structs(req, state):
     lines = []
 
     # construct the request struct
     lines.append('Record req := {')
-    lines.extend(translate_interface(inputs))
+    lines.extend([f'  {name} : {t};' for name, t in req])
     lines.append('}.')
     lines.append('Definition Req := type.reify\'\' req.')
     lines.append('')
 
     # construct the state struct
     lines.append('Record state := {')
-    lines.extend(translate_interface(state_inputs))
-    lines.extend(translate_interface(outputs))
+    lines.extend([f'  {name} : {t};' for name, t in state])
     lines.append('}.')
     lines.append('Definition State := type.reify\'\' state.')
     lines.append('')
 
     return '\n'.join(lines)
 
+def translate_array_get(varname, sz, i):
+    '''Returns an expression representing a single element of the array.'''
+    assert i < sz
+    idxw = sz.bit_length()
+    awh = f'(typeWithHole.Array {sz} typeWithHole.HOLE {idxw})'
+    idxs = f'(expr.Binop binop.MkPair (expr.Const (t:=Bits {idxw}) (bits.of_Z _ {i})) expr.tt))'
+    return f'(expr.Get {awh} (expr.Var {varname}) {idxs}'
+
 def get_rhs_exprs(inputs, state_inputs, use_notations):
     # build lookup tables for the port expressions
     rhs_tbl = {}
     for name, port in inputs.items():
         if len(port['bits']) == 1:
-            rhs_tbl[port['bits'][0]] = f'#_d_{name}'
+            expr = f'#_d_{name}' if use_notations else f'(expr.Var _d_{name})'
+            rhs_tbl[port['bits'][0]] = expr
         else:
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
-                rhs_tbl[bit] = f'(#_d_{name})[{idxw} \'d {i}]'
+                if use_notations:
+                    expr = f'(#_d_{name})[{idxw} \'d {i}]'
+                else:
+                    expr = translate_array_get(f'_d_{name}', len(port["bits"]), i)
+                rhs_tbl[bit] = expr
     for name, port in state_inputs.items():
         if len(port['bits']) == 1:
-            rhs_tbl[port['bits'][0]] = f'#_st_{name}'
+            expr = f'#_st_{name}' if use_notations else f'(expr.Var _st_{name})'
+            rhs_tbl[port['bits'][0]] = expr
         else:
             idxw = len(port['bits']).bit_length()
             for i, bit in enumerate(port['bits']):
-                tbl[bit] = f'(#_st_{name})[{idxlen} \'d {i}]'
-    if not use_notations:
-        rhs_tbl = {n:f'quartz_expr:({e})' for n, e in rhs_tbl.items()}
+                if use_notations:
+                    expr = f'(#_st_{name})[{idxlen} \'d {i}]'
+                else:
+                    expr = translate_array_get(f'_st_{name}', len(port["bits"]), i)
+                rhs_tbl[bit] = expr
     return rhs_tbl
 
 def get_cell_output_bits(cell):
@@ -207,6 +236,14 @@ def translate_let(name, expr, use_notations):
 
 
 def translate_cell(name, cell, lhs_tbl, rhs_tbl, out, use_notations):
+    '''Translate a single cell into a quartz expression.
+
+    The cell gets translated to a let-binder if the output signal is in the
+    lhs_tbl; otherwise it gets translated into a subexpression.
+
+    Returns the number of parentheses left open (this depends on the use of
+    notations and whether the cell is let-bound).
+    '''
     expr = get_cell_expr(cell, rhs_tbl, use_notations)
     outbits = get_cell_output_bits(cell)
     if len(outbits) != 1:
@@ -217,11 +254,12 @@ def translate_cell(name, cell, lhs_tbl, rhs_tbl, out, use_notations):
     if Y not in lhs_tbl:
         # do not assign
         rhs_tbl[Y] = expr
-        return
+        return 0
 
     name = lhs_tbl[Y]
     rhs_tbl[Y] = f'#{name}' if use_notations else f'(expr.Var {name})'
     out.write(translate_let(name, expr, use_notations))
+    return 0 if use_notations else 1
 
 def sanitize(name):
     '''Make a netname legal for a quartz variable name.'''
@@ -289,6 +327,17 @@ def topo_sort_cells(cells, rhs_tbl):
 
     return topo_sort(dag)
 
+def struct_with_hole(struct_name, struct, hole_field):
+    out = f'\n    (typeWithHole.Struct (NoDup_by_fun_eq_refl:= fun _ => eq_refl) "{struct_name}" ('
+    assert hole_field in map(lambda x:x[0], struct)
+    for name, t in struct:
+        if name == hole_field:
+            out += f'nil)%list "{name}" typeWithHole.HOLE ('
+        else:
+            out += f'("{name}"%string, {t}) :: '
+    out += 'nil)%list)\n    '
+    return out
+
 def translate_module(mname, module, out, use_notations):
     inputs, outputs, state_inputs, state_outputs, state_mapping = translate_ports(module['ports'])
     lhs_tbl = get_lhs_names(module)
@@ -297,7 +346,8 @@ def translate_module(mname, module, out, use_notations):
     rhs_tbl["1"] = "(1 'd 1)" if use_notations else '(expr.Const (t:=Bits 1) (bits.of_Z _ 1))'
     sorted_cells = topo_sort_cells(module["cells"], rhs_tbl)
 
-    out.write(stringify_ports(inputs, outputs, state_inputs, state_outputs))
+    req_struct, state_struct = ports_to_structs(inputs, outputs, state_inputs, state_outputs)
+    out.write(stringify_structs(req_struct, state_struct))
     out.write('\n')
     out.write(f'Definition {mname}_inner')
     out.write(' {var} : fn.fn var (Pair State Req) State := fn.Fn (fun (p: var (Pair State Req)) =>')
@@ -313,34 +363,39 @@ def translate_module(mname, module, out, use_notations):
         st_expr = '(expr.Get (typeWithHole.PairL typeWithHole.HOLE _) (expr.Var p) expr.tt)'
         out.write(translate_let('_st', st_expr, use_notations))
         close_parens += 1
-        d_expr = '(expr.Get (typeWithHole.PairR typeWithHole.HOLE _) (expr.Var p) expr.tt)'
+        d_expr = '(expr.Get (typeWithHole.PairR _ typeWithHole.HOLE) (expr.Var p) expr.tt)'
         out.write(translate_let('_d', d_expr, use_notations))
         close_parens += 1
 
-    # the .. notation calls ltac2 to reify the expression internally; assigning
-    # variables early instead of using expr.Get every time helps the Rocq
-    # expression parse in a more reasonable amount of time
+    # assign struct fields to variables to reduce the size of the overall
+    # expression (especially helps for performance when using notations)
     for name in state_inputs:
-        expr = f'#_st..{name}' if use_notations else f'quartz_expr:(#_st..name)'
-        out.write(translate_let(f'_st_{name}', expr, use_notations))
         if use_notations:
+            expr = f'#_st..{name}'
+            out.write(translate_let(f'_st_{name}', expr, use_notations))
+        else:
+            swh = struct_with_hole('state', state_struct, name)
+            expr = f'(expr.Get {swh} (expr.Var _st) expr.tt)'
+            out.write(translate_let(f'_st_{name}', expr, use_notations))
             close_parens += 1
     for name in inputs:
-        expr = f'#_d..{name}' if use_notations else f'quartz_expr:(#_d..name)'
-        out.write(translate_let(f'_d_{name}', expr, use_notations))
         if use_notations:
+            expr = f'#_d..{name}'
+            out.write(translate_let(f'_d_{name}', expr, use_notations))
+        else:
+            swh = struct_with_hole('req', req_struct, name)
+            expr = f'(expr.Get {swh} (expr.Var _d) expr.tt)'
+            out.write(translate_let(f'_d_{name}', expr, use_notations))
             close_parens += 1
 
     # translate the cells into bitwise operations
     for name in sorted_cells:
         cell = module['cells'][name]
-        translate_cell(name, cell, lhs_tbl, rhs_tbl, out, use_notations)
-        if use_notations:
-            close_parens += 1
+        close_parens += translate_cell(name, cell, lhs_tbl, rhs_tbl, out, use_notations)
 
     outports = list(outputs.items()) + list(state_outputs.items())
     out.write(translate_let(f'_new_st', '#_st' if use_notations else '(expr.Var _st)', use_notations))
-    if use_notations:
+    if not use_notations:
         close_parens += 1
 
     for name, p in outports:
@@ -352,27 +407,32 @@ def translate_module(mname, module, out, use_notations):
             if use_notations:
                 out.write(f'  let _new_st <- #_new_st..{name} = {expr} in\n')
             else:
-                out.write(f'  eexpr.Bind "_new_st" quartz_eexpr:(#_new_st..{name} = {expr}) (fun _new_st => in\n')
+                swh = struct_with_hole('state', state_struct, name)
+                out.write(f'  eexpr.Bind "_new_st" (eexpr.Upd (C:={swh}) expr.tt (expr.Var _new_st) {expr}) (fun _new_st =>\n')
                 close_parens += 1
         else:
             idxw = len(p['bits']).bit_length()
-            expr = f'#_new_st..{name}'
-            if not use_notations:
-                expr = f'quartz_expr:({expr})'
-            out.write(translate_let(f'{name}_upd', expr, use_notations))
             if use_notations:
+                expr = f'#_new_st..{name}'
+            else:
+                swh = struct_with_hole('state', state_struct, name)
+                expr = f'(expr.Get {swh} (expr.Var _new_st) expr.tt)'
+            out.write(translate_let(f'{name}_upd', expr, use_notations))
+            if not use_notations:
                 close_parens += 1
             for i, bit in enumerate(p['bits']):
                 expr = rhs_tbl[bit]
                 if use_notations:
                     out.write(f'  let {name}_upd <- (#{name}_upd)[{idxw} \'d {i}] = {expr} in\n')
                 else:
-                    out.write(f'  eexpr.Bind "{name}_upd" quartz_eexpr:((#{name}_upd)[{idxw} \'d {i}] = {expr}) (fun {name}_upd =>\n')
+                    awh = f'typeWithHole.Array {len(p["bits"])} typeWithHole.HOLE {idxw}'
+                    out.write(f'  eexpr.Bind "{name}_upd" (eexpr.Upd (C:={awh}) (expr.Binop binop.MkPair (expr.Const (t:=Bits {idxw}) (bits.of_Z _ {i})) expr.tt) (expr.Var {name}_upd) {expr}) (fun {name}_upd =>\n')
                     close_parens += 1
             if use_notations:
                 out.write(f'  let _new_st <- #_new_st..{name} = #{name}_upd in\n')
             else:
-                out.write(f'  eexpr.Bind "_new_st" quartz_eexpr:(_new_st..{name} = {name}_upd) (fun _new_st =>\n')
+                swh = struct_with_hole('state', state_struct, name)
+                out.write(f'  eexpr.Bind "_new_st" (eexpr.Upd (C:={swh}) expr.tt (expr.Var _new_st) (expr.Var {name}_upd)) (fun _new_st =>\n')
                 close_parens += 1
 
     if use_notations:
@@ -395,4 +455,4 @@ if __name__ == '__main__':
     args.out.write(PREFIX)
     modules = json.loads(args.json.read())['modules']
     for m in modules:
-        translate_module(m, modules[m], args.out, True)
+        translate_module(m, modules[m], args.out, False)
